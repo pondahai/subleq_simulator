@@ -65,39 +65,39 @@
 
 # --- 巨集定義 (必須在使用前定義) ---
 MACRO JUMP(TARGET)
-    ZERO, ZERO, TARGET
+    ZERO ZERO TARGET
 ENDM
 
 # --- 主程式 ---
 LOOP:
     # 步驟 1: 載入字元到 TMP。執行後 TMP = -ASCII。
     # C 操作數是下一行(.)，確保程式繼續執行。
-    LOAD_CMD: HELLO, TMP, .
+    LOAD_CMD: HELLO TMP .
 
     # 步驟 2: 檢查剛載入的字元是否為 0。
     # CHECKER = 0 - TMP = ASCII。
-    CHECKER, CHECKER, .
-    TMP, CHECKER, .
+    CHECKER CHECKER .
+    TMP CHECKER .
     
     # 步驟 2.1: 執行正確的檢查。
     # 如果 CHECKER 是 0，結果為 0，跳轉到 END。
-    ZERO, CHECKER, END
+    ZERO CHECKER END
 
     # 步驟 3: 輸出字元。
     # 從 TMP 重新恢復 CHECKER 的值來輸出。
-    CHECKER, CHECKER, .
-    TMP, CHECKER, .
-    CHECKER, OUT, .
+    CHECKER CHECKER .
+    TMP CHECKER .
+    CHECKER OUT .
 
     # 步驟 4: 修改載入指令，使其指向下一個字元。
-    NEG_ONE, LOAD_CMD, .
+    NEG_ONE LOAD_CMD .
     
     # 步驟 5: 清理暫存器並跳回迴圈開頭。
-    TMP, TMP, .
+    TMP TMP .
     JUMP(LOOP)
 
 END:
-    HALT, HALT, . - 2
+    HALT HALT . - 2
 
 # --- 資料與變數區 ---
 TMP:        0       # 讀取字元時的暫存器 (會存負值)
@@ -108,8 +108,8 @@ HALT:       -1      # 用於停止程式
 
 # --- 字串資料 ---
 HELLO:
-    DATA 72, 101, 108, 108, 111, 44, 32
-    DATA 87, 111, 114, 108, 100, 33, 10
+    DATA 72 101 108 108 111 44 32
+    DATA 87 111 114 108 100 33 10
     DATA 0
 ```
 
@@ -124,16 +124,16 @@ HELLO:
 
 # --- 巨集定義 ---
 MACRO JUMP(TARGET)
-    ZERO, ZERO, TARGET
+    ZERO ZERO TARGET
 ENDM
 
 # --- 主程式 ---
 START:
     # 步驟 1: 等待並讀取一個字元到 CHAR 變數中。
-    IN, CHAR, .
+    IN CHAR .
 
     # 步驟 2: 輸出 CHAR 變數中的字元。
-    CHAR, OUT, .
+    CHAR OUT .
     
     # 步驟 3: 無條件跳轉回 START，繼續下一次循環。
     JUMP(START)
