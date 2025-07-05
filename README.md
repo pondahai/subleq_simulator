@@ -3,7 +3,8 @@
 這是一個功能齊全、完全包含在單一 HTML 檔案中的 Subleq 指令集架構 (ISA) 模擬器。它不僅是一個執行環境，更是一個迷你的整合開發環境 (IDE)，讓您可以撰寫、組合、載入並逐步執行 Subleq 組合語言程式，是學習和實驗 OISC (One-Instruction Set Computer) 概念的絕佳工具。
 
 
-*(註：您可以截一張模擬器運行的圖片並替換此處的 URL)*
+![螢幕擷取畫面 2025-07-05 161211](https://github.com/user-attachments/assets/5813bd57-ad1f-4e97-a929-a25a9ec27cba)
+
 
 ## 專案亮點
 
