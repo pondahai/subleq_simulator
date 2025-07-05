@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subleq 網頁模擬器 (v19 - 最終完美版)</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --panel-bg: #252526;
+            --text-color: #d4d4d4;
+            --primary-color: #0e639c;
+            --border-color: #3e3e42;
+            --error-color: #f44747;
+            --success-color: #4ec9b0;
+            --warn-color: #ffd700;
+            --halt-color: #f48747;
+            --highlight-pc: rgba(255, 255, 0, 0.2);
+            --highlight-mem: rgba(78, 201, 176, 0.3);
+        }
+        html {
+            background-color: var(--bg-color);
+        }
+        body {
+            font-family: 'Segoe UI', 'Microsoft JhengHei', 'PingFang TC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        h1 { color: var(--primary-color); text-align: center; margin: 0 0 15px 0; flex-shrink: 0; }
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 100%;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        /* --- CSS 核心修正 --- */
+        .row {
+            display: flex;
+            gap: 15px;
+            /* 移除 flex-wrap: wrap; 確保面板永遠在同一行 */
+        }
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-width: 0; /* 允許 flex item 收縮 */
+        }
+        .top-row .panel.col-1 { flex: 1 1 300px; } /* 控制區: 基礎寬度300px，可伸縮 */
+        .top-row .panel.col-2 { flex: 2 1 400px; } /* 源碼/記憶體區: 佔用更多空間 */
+        .bottom-row .panel { flex: 1; } /* 輸入/輸出區: 均分 */
+        
+        h2, h3 { color: var(--primary-color); border-bottom: 1px solid var(--border-color); padding-bottom: 5px; margin-top: 0; margin-bottom: 10px; font-weight: 600; flex-shrink: 0; }
+        textarea, pre {
+            background-color: #1e1e1e;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 10px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+        }
+        #sourceCode, #memoryView, #outputTerminal, #inputTerminal, #statusArea {
+            flex-grow: 1;
+            resize: vertical;
+            min-height: 100px;
+        }
+        .top-row #sourceCode, .top-row #memoryView {
+             height: 50vh;
+        }
+        .bottom-row textarea {
+            height: 20vh;
+        }
+
+        .memory-row { display: flex; padding: 1px 5px; }
+        .memory-row:hover { background-color: var(--border-color); }
+        .mem-addr { color: #8c8c8c; min-width: 50px; }
+        .mem-val { color: var(--success-color); }
+        .pc-highlight { background-color: var(--highlight-pc); border-left: 2px solid yellow; }
+        .mem-highlight { background-color: var(--highlight-mem); animation: flash 0.5s ease-out; }
+        @keyframes flash { from { background-color: var(--highlight-mem); } to { background-color: transparent; } }
+        
+        .control-column-panel { gap: 15px; }
+        .control-column-panel > div { flex-shrink: 0; }
+        .status-wrapper {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0; 
+        }
+
+        .controls, .cpu-status { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+        .cpu-status span { font-weight: bold; padding: 2px 8px; border-radius: 4px; }
+        .status-IDLE { background-color: #555; }
+        .status-RUNNING { background-color: var(--success-color); color: #1e1e1e; }
+        .status-PAUSED { background-color: var(--warn-color); color: #1e1e1e; }
+        .status-WAITING_INPUT { background-color: var(--primary-color); }
+        .status-HALTED { background-color: var(--halt-color); color: #1e1e1e; }
+        .status-ERROR { background-color: var(--error-color); }
+        
+        button { background-color: var(--primary-color); color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: background-color 0.2s; }
+        button:hover { background-color: #1c7ec2; }
+        button:disabled { background-color: #333; cursor: not-allowed; }
+        #assembleBtn { background-color: var(--success-color); color: #1e1e1e; font-weight: bold; }
+        #assembleBtn:hover { background-color: #5ee3c7; }
+        .status-error-msg { color: var(--error-color); }
+        .status-success-msg { color: var(--success-color); }
+    </style>
+</head>
+<body>
+    <h1>Subleq 網頁模擬器</h1>
+    <div class="main-container">
+        <div class="row top-row">
+            <div class="panel col-1 control-column-panel">
+                <div>
+                    <h3>控制面板</h3>
+                    <div class="controls">
+                        <button id="assembleBtn">組合/載入</button>
+                        <button id="runBtn" disabled>執行</button>
+                        <button id="pauseBtn" disabled>暫停</button>
+                        <button id="stepBtn" disabled>單步</button>
+                        <button id="resetBtn">重設</button>
+                        <label for="speedSlider" style="margin-left:auto;">速度:</label>
+                        <input type="range" id="speedSlider" min="0" max="1000" value="950">
+                    </div>
+                </div>
+                <div>
+                    <h3>CPU 狀態</h3>
+                    <div class="cpu-status">
+                        <strong>狀態:</strong> <span id="cpuStatus" class="status-IDLE">閒置</span>
+                        <strong style="margin-left:auto;">PC:</strong> <span id="pcValue">0</span>
+                    </div>
+                </div>
+                <div class="status-wrapper">
+                    <h3>組合/狀態訊息</h3>
+                    <pre id="statusArea">模擬器準備就緒。</pre>
+                </div>
+            </div>
+            <div class="panel col-2">
+                <h2>程式源碼區 (組合語言)</h2>
+                <textarea id="sourceCode">
+# ========================================================
+#   Subleq 範例: 回音程式 (Echo)
+#   從輸入讀取字元，再輸出到螢幕。
+#   (已移除自動換行)
+# ========================================================
+
+# --- 巨集定義 ---
+MACRO JUMP(TARGET)
+    ZERO, ZERO, TARGET
+ENDM
+
+# --- 主程式 ---
+START:
+    # 步驟 1: 等待並讀取一個字元到 CHAR 變數中。
+    IN, CHAR, .
+
+    # 步驟 2: 輸出 CHAR 變數中的字元。
+    CHAR, OUT, .
+    
+    # 步驟 3: 無條件跳轉回 START，繼續下一次循環。
+    JUMP(START)
+
+# --- 資料與變數區 ---
+CHAR:       0       # 用來儲存輸入字元的變數
+ZERO:       0       # 用於實現無條件跳轉
+                </textarea>
+            </div>
+            <div class="panel col-2">
+                <h2>記憶體區</h2>
+                <div id="memoryView"></div>
+            </div>
+        </div>
+        <div class="row bottom-row">
+            <div class="panel">
+                <h2>輸出 (Output)</h2>
+                <textarea id="outputTerminal" readonly></textarea>
+            </div>
+            <div class="panel">
+                <h2>輸入 (Input)</h2>
+                <textarea id="inputTerminal" placeholder="程式需要輸入時，請在此處輸入..."></textarea>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- JavaScript 程式碼 (與 v17 完全相同) ---
+    // (所有 JavaScript 程式碼與 v17 相同，無需修改)
+    const sourceCodeEl = document.getElementById('sourceCode');
+    const assembleBtn = document.getElementById('assembleBtn');
+    const runBtn = document.getElementById('runBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const stepBtn = document.getElementById('stepBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const speedSlider = document.getElementById('speedSlider');
+    const statusAreaEl = document.getElementById('statusArea');
+    const memoryViewEl = document.getElementById('memoryView');
+    const outputTerminalEl = document.getElementById('outputTerminal');
+    const inputTerminalEl = document.getElementById('inputTerminal');
+    const cpuStatusEl = document.getElementById('cpuStatus');
+    const pcValueEl = document.getElementById('pcValue');
+
+    class SubleqSimulator {
+        constructor() {
+            this.MEMORY_SIZE = 4096;
+            this.IO_ADDR = -1;
+            this.reset();
+        }
+        
+        reset() {
+            this.memory = new Int32Array(this.MEMORY_SIZE).fill(0);
+            this.pc = 0;
+            this.isRunning = false;
+            this.isLoaded = false;
+            this.isWaitingForInput = false;
+            this.wasRunningBeforeInput = false;
+            if (this.runInterval) clearInterval(this.runInterval);
+            this.runInterval = null;
+            this.inputBuffer = '';
+            this.macros = {}; this.symbols = {}; this.machineCode = [];
+            this.lastModifiedMem = -1;
+            
+            outputTerminalEl.value = '';
+            inputTerminalEl.value = '';
+            memoryViewEl.innerHTML = '請組合與載入程式碼。';
+
+            this.setCpuStatus('IDLE');
+            this.updateButtons();
+            this.setAsmStatus('模擬器已重設。請撰寫程式後點擊「組合/載入」。', 'info');
+        }
+        
+        setAsmStatus(message, type = 'info') { statusAreaEl.textContent = message; statusAreaEl.className = type === 'error' ? 'status-error-msg' : (type === 'success' ? 'status-success-msg' : 'status-info-msg'); }
+        setCpuStatus(status) { this.status = status; const statusTextMap = { 'IDLE': '閒置', 'RUNNING': '執行中', 'PAUSED': '已暫停', 'WAITING_INPUT': '等待輸入', 'HALTED': '已停止', 'ERROR': '錯誤' }; cpuStatusEl.textContent = statusTextMap[status] || '未知'; cpuStatusEl.className = `status-${status}`; pcValueEl.textContent = this.pc; }
+        assemble(source) { this.macros = {}; this.symbols = {}; this.machineCode = []; try { const expandedSource = this.expandMacros(source); this.buildSymbolTable(expandedSource); this.generateMachineCode(expandedSource); this.setAsmStatus(`組合成功！共產生 ${this.machineCode.length} 個字。`, 'success'); return true; } catch (e) { this.setAsmStatus(`組合錯誤: ${e.message}`, 'error'); return false; } }
+        expandMacros(source) { const lines = source.split('\n'); let expandedLines = []; let inMacroDef = false; let currentMacro = null; for (const line of lines) { const cleanLine = line.replace(/#.*/, '').replace(/;.*/, '').trim(); if (!cleanLine) continue; const macroDefMatch = cleanLine.match(/^MACRO\s+(\w+)\s*\(([^)]*)\)/i); if (macroDefMatch) { inMacroDef = true; currentMacro = { name: macroDefMatch[1], params: macroDefMatch[2].split(',').map(p => p.trim()).filter(Boolean), body: [] }; continue; } if (cleanLine.match(/^ENDM/i)) { inMacroDef = false; this.macros[currentMacro.name.toUpperCase()] = currentMacro; currentMacro = null; continue; } if (inMacroDef) { currentMacro.body.push(cleanLine); } else { const macroCallMatch = cleanLine.match(/(\w+)\s*\(([^)]*)\)/); if (macroCallMatch && this.macros[macroCallMatch[1].toUpperCase()]) { const macro = this.macros[macroCallMatch[1].toUpperCase()]; const args = macroCallMatch[2].split(',').map(p => p.trim()); if (args.length !== macro.params.length) { throw new Error(`巨集 ${macro.name} 呼叫參數數量錯誤。`); } for (let bodyLine of macro.body) { for (let i = 0; i < macro.params.length; i++) { bodyLine = bodyLine.replace(new RegExp(`\\b${macro.params[i]}\\b`, 'g'), args[i]); } expandedLines.push(bodyLine); } } else { expandedLines.push(cleanLine); } } } return expandedLines; }
+        buildSymbolTable(lines) { let address = 0; this.symbols['IN'] = this.IO_ADDR; this.symbols['OUT'] = this.IO_ADDR; for (const line of lines) { const labelMatch = line.match(/^(\w+):/); if (labelMatch) { const label = labelMatch[1].toUpperCase(); if (this.symbols[label] !== undefined) throw new Error(`重複的標籤定義: ${label}`); this.symbols[label] = address; } const parts = line.replace(/^(\w+):\s*/, '').split(',').map(p => p.trim()); if (parts[0] === '') continue; if (parts[0].toUpperCase() === 'DATA') { address += parts.slice(1).reduce((acc, part) => acc + part.split(',').filter(Boolean).length, 0); } else if (parts.length === 3) { address += 3; } else if (parts.length === 1 && parts[0] !== '') { address += 1; } } }
+        resolveValue(value, instructionAddr, operandAddr) { const cleanedValue = value.trim(); if (cleanedValue === '.') return instructionAddr + 3; if (/^-?\d+$/.test(cleanedValue)) return parseInt(cleanedValue, 10); const exprMatch = cleanedValue.match(/^(.+?)\s*([+-])\s*(\d+)$/); if (exprMatch) { const baseSymbol = exprMatch[1].trim(); const operator = exprMatch[2]; const offset = parseInt(exprMatch[3], 10); let baseValue; if (baseSymbol === '.') { baseValue = operandAddr; } else { const upperSymbol = baseSymbol.toUpperCase(); if (this.symbols[upperSymbol] !== undefined) { baseValue = this.symbols[upperSymbol]; } else { throw new Error(`運算式中的基礎符號未定義: '${baseSymbol}'`); } } return operator === '+' ? baseValue + offset : baseValue - offset; } const upperVal = cleanedValue.toUpperCase(); if (this.symbols[upperVal] !== undefined) return this.symbols[upperVal]; throw new Error(`未定義的符號或無效的運算式: '${value}'`); }
+        generateMachineCode(lines) { let address = 0; for (const line of lines) { let instruction = line.replace(/^(\w+):\s*/, '').trim(); if (instruction === '') continue; if (instruction.toUpperCase().startsWith('DATA')) { const dataValues = instruction.substring(4).trim().split(',').map(s => s.trim()).filter(Boolean); for(const val of dataValues) { this.machineCode.push(this.resolveValue(val, address, address)); address++; } } else { const parts = instruction.split(',').map(p => p.trim()); if (parts.length === 3) { this.machineCode.push(this.resolveValue(parts[0], address, address)); this.machineCode.push(this.resolveValue(parts[1], address, address + 1)); this.machineCode.push(this.resolveValue(parts[2], address, address + 2)); address += 3; } else if (parts.length === 1) { this.machineCode.push(this.resolveValue(parts[0], address, address)); address++; } else { throw new Error(`語法錯誤: ${line}`); } } } }
+        load() { if (this.machineCode.length === 0) { this.setAsmStatus('組合失敗或無程式碼可載入。', 'error'); this.isLoaded = false; return false; } if (this.machineCode.length > this.MEMORY_SIZE) { this.setAsmStatus(`程式過大 (${this.machineCode.length} 字)，超過記憶體限制 (${this.MEMORY_SIZE} 字)。`, 'error'); this.isLoaded = false; return false; } this.memory.fill(0); this.machineCode.forEach((val, i) => this.memory[i] = val); this.pc = 0; this.isWaitingForInput = false; this.isLoaded = true; this.updateMemoryView(); this.setCpuStatus('IDLE'); this.setAsmStatus('程式已成功載入記憶體，可以執行。', 'success'); this.updateButtons(); return true; }
+        step() { if (!this.isLoaded) { this.setAsmStatus('請先載入程式。', 'warn'); return; } if (this.pc < 0 || this.pc + 2 >= this.MEMORY_SIZE) { this.setCpuStatus('HALTED'); this.pause(); return; } const opA = this.memory[this.pc]; const opB = this.memory[this.pc + 1]; const opC = this.memory[this.pc + 2]; if (opA === opB && opC === this.pc) { this.setCpuStatus('HALTED'); this.pause(); return; } if (opA === this.IO_ADDR) { if (this.inputBuffer.length > 0) { const charCode = this.inputBuffer.charCodeAt(0); this.inputBuffer = this.inputBuffer.slice(1); inputTerminalEl.value = this.inputBuffer; if (opB >= 0 && opB < this.MEMORY_SIZE) { this.memory[opB] = charCode; this.lastModifiedMem = opB; } } else { this.wasRunningBeforeInput = this.isRunning; this.setCpuStatus('WAITING_INPUT'); this.isWaitingForInput = true; this.pause(); return; } } else { if (opA >= this.MEMORY_SIZE || opB >= this.MEMORY_SIZE || opA < -1 || opB < -1) { this.setCpuStatus('ERROR'); this.setAsmStatus(`記憶體存取越界 A=${opA} B=${opB}`, 'error'); this.pause(); return; } const valA = (opA === this.IO_ADDR) ? 0 : this.memory[opA]; const valB = (opB === this.IO_ADDR) ? 0 : this.memory[opB]; const result = valB - valA; if (opB >= 0) { this.memory[opB] = result; this.lastModifiedMem = opB; } } if (opB === this.IO_ADDR) { const valA = this.memory[opA]; outputTerminalEl.value += String.fromCharCode(valA); outputTerminalEl.scrollTop = outputTerminalEl.scrollHeight; } const finalValB = (opB === this.IO_ADDR) ? 0 : this.memory[opB]; if (finalValB <= 0) { this.pc = opC; } else { this.pc += 3; } this.setCpuStatus(this.isRunning ? 'RUNNING' : 'PAUSED'); this.updateMemoryView(); }
+        run() { if (!this.isLoaded) { this.setAsmStatus('請先載入程式。', 'warn'); return; } if (this.isRunning) return; this.isRunning = true; this.isWaitingForInput = false; this.setCpuStatus('RUNNING'); this.updateButtons(); const speed = Math.max(1, 1000 - speedSlider.value); if (this.runInterval) clearInterval(this.runInterval); this.runInterval = setInterval(() => this.step(), speed); }
+        pause() { if (!this.isRunning && !this.isWaitingForInput) return; this.isRunning = false; if (this.status !== 'HALTED' && this.status !== 'ERROR' && this.status !== 'WAITING_INPUT') { this.setCpuStatus('PAUSED'); } clearInterval(this.runInterval); this.runInterval = null; this.updateButtons(); }
+        updateButtons() { const canExecute = this.isLoaded && !this.isRunning && this.status !== 'HALTED' && this.status !== 'ERROR'; runBtn.disabled = !canExecute; stepBtn.disabled = !canExecute; pauseBtn.disabled = !this.isRunning; assembleBtn.disabled = this.isRunning; resetBtn.disabled = this.isRunning; }
+        updateMemoryView() { let html = ''; const start = Math.max(0, this.pc - 15); const end = Math.min(this.MEMORY_SIZE, Math.max(this.pc + 15, 60)); for (let i = start; i < end; i++) { let rowClass = 'memory-row'; if (i >= this.pc && i < this.pc + 3) rowClass += ' pc-highlight'; if (i === this.lastModifiedMem) rowClass += ' mem-highlight'; const addr = i.toString().padStart(4, '0'); const val = this.memory[i]; html += `<div class="${rowClass}"><span class="mem-addr">${addr}:</span><span class="mem-val">${val}</span></div>`; } memoryViewEl.innerHTML = html; const pcEl = memoryViewEl.querySelector('.pc-highlight'); if (pcEl) pcEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    }
+
+    const sim = new SubleqSimulator();
+    
+    assembleBtn.addEventListener('click', () => { if (sim.assemble(sourceCodeEl.value)) { sim.load(); } });
+    runBtn.addEventListener('click', () => sim.run());
+    pauseBtn.addEventListener('click', () => sim.pause());
+    stepBtn.addEventListener('click', () => sim.step());
+    resetBtn.addEventListener('click', () => sim.reset());
+    
+    inputTerminalEl.addEventListener('keyup', (e) => {
+        sim.inputBuffer = inputTerminalEl.value;
+        if (sim.isWaitingForInput) {
+            sim.isWaitingForInput = false;
+            if (sim.wasRunningBeforeInput) {
+                sim.run();
+            } else {
+                sim.step();
+            }
+        }
+    });
+});
+</script>
+</body>
+</html>
